@@ -1,15 +1,12 @@
 import unittest
-from project import (
-    # create_dataset,
-    create_dataset_split,
-    # get_dataset_dict,
-    integer_to_unary_sequence,
-    # tokenize_dataset,
-    TokenizedDataset,
-)
+
 from datasets import DatasetDict
 import transformers
 import torch
+
+from dataloader import TokenizedDataset, create_dataset_split, integer_to_unary_sequence
+from evaluation import evaluate_model
+from models import DummyModel, load_models
 
 
 class TestCreateDatasetSplit(unittest.TestCase):
@@ -50,19 +47,31 @@ class TestIntegerToUnarySequence(unittest.TestCase):
             integer_to_unary_sequence(-1)
 
 
-class TestTokenizeDataset(unittest.TestCase):
-    def test_tokenize_dataset(self):
-        tokenizer = transformers.GPT2Tokenizer.from_pretrained("gpt2")
-        tokenizer.pad_token = tokenizer.eos_token
-        dataset = [1, 2, 3, 4, 5]
-        tokenized_dataset = TokenizedDataset(dataset, tokenizer, 1536)
-        self.assertEqual(len(tokenized_dataset), 5)
+class TestTokenizeDatasetAndEvaluation(unittest.TestCase):
 
-        # get four items and check if they have the right shape
-        for i in range(4):
-            item = tokenized_dataset[i]
-            self.assertEqual(item["input_ids"].shape, torch.Size([1536]))
-            self.assertEqual(item["attention_mask"].shape, torch.Size([1536]))
+    def test_tokenize_dataset(self):
+        tinystories_model, random_init_model, tokenizer = load_models()
+        dataset = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        tokenized_dataset = TokenizedDataset(dataset, tokenizer, 1536)
+        self.assertEqual(len(tokenized_dataset), 10)
+
+        self.assertEqual(
+            tokenized_dataset.get_string_prompt(0),
+            "Please count up in unary, starting at 1 and stopping at 1:",
+        )
+
+        self.assertEqual(
+            tokenized_dataset.get_string_target(2), "1 11 111<|endoftext|>"
+        )
+
+        dummy_model = DummyModel(tokenizer=tokenizer, errors_per_10_datapoints=2)
+        self.assertEqual(evaluate_model(dummy_model, tokenized_dataset), 0.8)
+
+        dummy_model = DummyModel(tokenizer=tokenizer, errors_per_10_datapoints=10)
+        self.assertEqual(evaluate_model(dummy_model, tokenized_dataset), 0.0)
+
+        dummy_model = DummyModel(tokenizer=tokenizer, errors_per_10_datapoints=0)
+        self.assertEqual(evaluate_model(dummy_model, tokenized_dataset), 1.0)
 
 
 if __name__ == "__main__":
